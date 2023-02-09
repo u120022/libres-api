@@ -1,0 +1,56 @@
+name: Rust
+
+on:
+  release:
+    types: [created]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install requirements
+      run: sudo apt install -qq -y musl-tools --no-install-recommends
+    - name: Setup Rust toolchains
+      uses: actions-rs/toolchain@v1
+      with:
+          profile: minimal
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+          override: true
+    - name: Setup compile option
+      shell: bash
+      run: |
+        mkdir ./.cargo
+        echo -e "[target.x86_64-unknown-linux-musl]\nlinker = \"rust-lld\"" > ./.cargo/config
+    - name: Compile
+      run: cargo build --release --target x86_64-unknown-linux-musl
+    - name: Strip
+      run: strip ./target/x86_64-unknown-linux-musl/release/libres
+    - name: Upload
+      uses: actions/upload-artifact@v3
+      with:
+        name: libres
+        path: ./target/x86_64-unknown-linux-musl/release/libres
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: Download
+      uses: actions/download-artifact@v3
+      with:
+        name: libres
+        path: ./libres
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./libres/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
