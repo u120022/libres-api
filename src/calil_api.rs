@@ -16,22 +16,22 @@ type E = Box<dyn Error>;
 #[derive(Debug, Default, Clone)]
 pub struct CalilAppState {
     library_chunk: Arc<RwLock<LibraryChunk>>,
-    api_key: String,
+    appkey: String,
 }
 
 impl CalilAppState {
-    pub fn new(api_key: &str) -> Self {
+    pub fn new(appkey: &str) -> Self {
         Self {
-            api_key: api_key.to_string(),
+            appkey: appkey.to_string(),
             ..Self::default()
         }
     }
 
     // get and store library all data from external web api
-    pub async fn pull_data(&mut self) -> Result<(), E> {
+    pub async fn pull_data(&self) -> Result<(), E> {
         let mut reader = Client::default()
             .get("https://api.calil.jp/library")
-            .query(&[("appkey", self.api_key.as_str())])?
+            .query(&[("appkey", self.appkey.as_str())])?
             .send()
             .await?
             .body()
@@ -41,12 +41,12 @@ impl CalilAppState {
 
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
-
         let document = roxmltree::Document::parse(&buf)?;
         let root = document.root_element();
+        let result = library_pull_parse(root).context("failed to parse")?;
 
         let mut library_chunk = self.library_chunk.write().ok().context("poisoned")?;
-        *library_chunk = library_pull_parse(root).context("failed to parse")?;
+        *library_chunk = result;
         Ok(())
     }
 
@@ -67,8 +67,8 @@ impl CalilAppState {
 
         let items: Vec<models::Library> = filtered
             .clone()
-            .take(page_size as usize)
             .skip((page_size * page) as usize)
+            .take(page_size as usize)
             .cloned()
             .map(Library::into)
             .collect();
@@ -148,7 +148,7 @@ impl CalilAppState {
             .collect();
 
         let mut send_query: Vec<(_, Cow<str>)> = vec![
-            ("appkey", Cow::Borrowed(&self.api_key)),
+            ("appkey", Cow::Borrowed(&self.appkey)),
             ("isbn", Cow::Borrowed(isbn)),
             ("systemid", Cow::Owned(system_ids.join(","))),
             ("format", Cow::Borrowed("xml")),
@@ -166,13 +166,12 @@ impl CalilAppState {
 
             let mut buf = String::new();
             reader.read_to_string(&mut buf)?;
-
             let document = roxmltree::Document::parse(&buf)?;
             let root = document.root_element();
-
             let chunk = holder_get_parse(root).context("failed to parse")?;
+
             send_query = vec![
-                ("appkey", Cow::Borrowed(&self.api_key)),
+                ("appkey", Cow::Borrowed(&self.appkey)),
                 ("session", Cow::Owned(chunk.session.clone())),
                 ("format", Cow::Borrowed("xml")),
             ];
@@ -420,33 +419,33 @@ mod test {
     use std::env;
 
     #[actix_web::test]
-    async fn test_all() {
-        let api_key = env::var("CALIL_APPKEY").unwrap();
-        let mut state = CalilAppState::new(&api_key);
+    async fn test_calil() {
+        let appkey = env::var("CALIL_APPKEY").unwrap();
+        let state = CalilAppState::new(&appkey);
         state.pull_data().await.unwrap();
 
         let res = state
             .library_query("富山県", "射水市", 20, 0)
             .await
             .unwrap();
-        println!("query: \"{:?}\"", res);
+        println!("library query: \"{:?}\"", res);
 
         let res = state
             .library_geocode_query((36.7077262, 137.0958753), 20)
             .await
             .unwrap();
-        println!("geocode query: \"{:?}\"", res);
+        println!("library geocode query: \"{:?}\"", res);
 
         let res = state
             .library_get("富山県立大学附属図書館射水館")
             .await
             .unwrap();
-        println!("get: \"{:?}\"", res);
+        println!("library get: \"{:?}\"", res);
 
         let res = state
             .holder_query("9784001141276", &["富山県立大学附属図書館射水館"])
             .await
             .unwrap();
-        println!("holder: \"{:?}\"", res);
+        println!("holder query: \"{:?}\"", res);
     }
 }
