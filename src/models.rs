@@ -1,4 +1,34 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize)]
+pub struct User {
+    pub id: i64,
+    pub email: String,
+    pub password: String,
+    pub fullname: String,
+    pub address: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Reservation {
+    pub id: i64,
+    pub user_id: i64,
+    pub library_id: String,
+    pub book_id: String,
+    pub status: String,
+    pub staging_at: NaiveDateTime,
+    pub staged_at: Option<NaiveDateTime>,
+    pub reserved_at: Option<NaiveDateTime>,
+    pub completed_at: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Session {
+    pub id: i64,
+    pub token: String,
+    pub user_id: i64,
+}
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct BookChunk {

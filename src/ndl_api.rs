@@ -7,7 +7,7 @@ use std::{error::Error, io::Read};
 
 type E = Box<dyn Error>;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct NdlAppState;
 
 impl NdlAppState {
