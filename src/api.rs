@@ -5,17 +5,21 @@ use awc::Client;
 use geoutils::Location;
 use roxmltree::Node;
 use std::{
+    borrow::Cow,
+    error::Error,
     io::Read,
     sync::{Arc, RwLock},
 };
 
+type E = Box<dyn Error>;
+
 #[derive(Debug, Default, Clone)]
-pub struct AppState {
+pub struct CalilAppState {
     library_chunk: Arc<RwLock<LibraryChunk>>,
     api_key: String,
 }
 
-impl AppState {
+impl CalilAppState {
     pub fn new(api_key: &str) -> Self {
         Self {
             api_key: api_key.to_string(),
@@ -24,28 +28,26 @@ impl AppState {
     }
 
     // get and store library all data from external web api
-    pub async fn pull_data(&mut self) {
+    pub async fn pull_data(&mut self) -> Result<(), E> {
         let mut reader = Client::default()
             .get("https://api.calil.jp/library")
-            .query(&[("appkey", self.api_key.as_str())])
-            .unwrap()
+            .query(&[("appkey", self.api_key.as_str())])?
             .send()
-            .await
-            .unwrap()
+            .await?
             .body()
             .limit(1024 * 1024 * 16) // 16Mib
-            .await
-            .unwrap()
+            .await?
             .reader();
 
         let mut buf = String::new();
-        reader.read_to_string(&mut buf).unwrap();
+        reader.read_to_string(&mut buf)?;
 
-        let document = roxmltree::Document::parse(&buf).unwrap();
+        let document = roxmltree::Document::parse(&buf)?;
         let root = document.root_element();
 
-        let mut library_chunk = self.library_chunk.write().unwrap();
-        *library_chunk = library_pull_parse(root).unwrap();
+        let mut library_chunk = self.library_chunk.write().ok().context("poisoned")?;
+        *library_chunk = library_pull_parse(root).context("failed to parse")?;
+        Ok(())
     }
 
     // search library by pref. and city
@@ -55,8 +57,8 @@ impl AppState {
         city: &str,
         page_size: u32,
         page: u32,
-    ) -> models::LibraryChunk {
-        let library_chunk = self.library_chunk.read().unwrap();
+    ) -> Result<models::LibraryChunk, E> {
+        let library_chunk = self.library_chunk.read().ok().context("poisoned")?;
 
         let filtered = library_chunk
             .items
@@ -73,7 +75,7 @@ impl AppState {
 
         let total_count = filtered.count() as u32;
 
-        models::LibraryChunk { items, total_count }
+        Ok(models::LibraryChunk { items, total_count })
     }
 
     // search library by geocode
@@ -81,20 +83,20 @@ impl AppState {
         &self,
         geocode: (f64, f64),
         limit: u32,
-    ) -> models::LibraryChunk {
-        let library_chunk = self.library_chunk.read().unwrap();
+    ) -> Result<models::LibraryChunk, E> {
+        let library_chunk = self.library_chunk.read().ok().context("poisoned")?;
 
         let current = Location::new(geocode.0, geocode.1);
 
-        let mut ref_items: Vec<_> = library_chunk.items.iter().collect();
+        let mut items: Vec<_> = library_chunk.items.iter().collect();
 
-        ref_items.sort_by_key(|item| {
+        items.sort_by_key(|item| {
             Location::new(item.geocode.0, item.geocode.1)
                 .haversine_distance_to(&current)
                 .meters() as u32
         });
 
-        let items: Vec<models::Library> = ref_items
+        let items: Vec<models::Library> = items
             .into_iter()
             .take(limit as usize)
             .cloned()
@@ -103,46 +105,89 @@ impl AppState {
 
         let total_count = items.len() as u32;
 
-        models::LibraryChunk { items, total_count }
+        Ok(models::LibraryChunk { items, total_count })
     }
 
     // get library by name
-    pub async fn library_get(&self, name: String) -> models::Library {
-        let library_chunk = self.library_chunk.read().unwrap();
+    pub async fn library_get(&self, library_name: &str) -> Result<models::Library, E> {
+        let library_chunk = self.library_chunk.read().ok().context("poisoned")?;
 
         let library: models::Library = library_chunk
             .items
             .iter()
-            .find(|item| item.name == *name)
-            .unwrap()
+            .find(|item| item.library_name == *library_name)
+            .context("not found")?
             .clone()
             .into();
 
-        library
+        Ok(library)
     }
 
     // get holder state by isbn and library name from external web api
     // relate library name and system id by library all ata
-    pub async fn holder_query(&self, isbn: &str, library_names: &[&str]) -> models::HolderChunk {
-        let library_chunk = self.library_chunk.read().unwrap();
+    pub async fn holder_query(
+        &self,
+        isbn: &str,
+        library_names: &[&str],
+    ) -> Result<models::HolderChunk, E> {
+        let library_chunk = self.library_chunk.read().ok().context("poisoned")?;
 
-        let system_ids: Vec<_> = library_names
+        let library_chunk: Vec<_> = library_names
             .iter()
-            .filter_map(|name| library_chunk.items.iter().find(|item| item.name == *name))
-            .map(|item| &item.system_id)
+            .filter_map(|library_name| {
+                library_chunk
+                    .items
+                    .iter()
+                    .find(|item| item.library_name == *library_name)
+            })
             .collect();
 
-        let system_ids: Vec<_> = system_ids
+        let system_ids: Vec<_> = library_chunk
             .iter()
-            .map(|system_id| system_id.as_str())
+            .map(|item| item.system_id.as_str())
             .collect();
 
-        let chunk = self.holder_query_by_system_ids(&isbn, &system_ids).await;
+        let mut send_query: Vec<(_, Cow<str>)> = vec![
+            ("appkey", Cow::Borrowed(&self.api_key)),
+            ("isbn", Cow::Borrowed(isbn)),
+            ("systemid", Cow::Owned(system_ids.join(","))),
+            ("format", Cow::Borrowed("xml")),
+        ];
 
-        let items: Vec<models::Holder> = library_names
+        let chunk = loop {
+            let mut reader = Client::default()
+                .get("https://api.calil.jp/check")
+                .query(&send_query)?
+                .send()
+                .await?
+                .body()
+                .await?
+                .reader();
+
+            let mut buf = String::new();
+            reader.read_to_string(&mut buf)?;
+
+            let document = roxmltree::Document::parse(&buf)?;
+            let root = document.root_element();
+
+            let chunk = holder_get_parse(root).context("failed to parse")?;
+            send_query = vec![
+                ("appkey", Cow::Borrowed(&self.api_key)),
+                ("session", Cow::Owned(chunk.session.clone())),
+                ("format", Cow::Borrowed("xml")),
+            ];
+
+            if !chunk.has_next {
+                break chunk;
+            }
+
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        };
+
+        let items: Vec<_> = library_chunk
             .iter()
-            .filter_map(|name| {
-                let item = library_chunk.items.iter().find(|item| item.name == *name)?;
+            .map(|item| {
+                let library_name = &item.library_name;
                 let system_id = &item.system_id;
                 let ingroup_id = &item.ingroup_id;
 
@@ -150,89 +195,19 @@ impl AppState {
                     .items
                     .iter()
                     .find(|item| &item.system_id == system_id && &item.ingroup_id == ingroup_id)
-                    .map(|item| &item.state)
-                    .cloned()
-                    .unwrap_or_default();
+                    .map_or(models::HolderState::Nothing, |item| item.state.clone());
 
-                Some(models::Holder {
+                models::Holder {
                     isbn: isbn.to_string(),
-                    library_name: name.to_string(),
+                    library_name: library_name.to_string(),
                     state,
-                })
+                }
             })
             .collect();
 
         let total_count = items.len() as u32;
 
-        models::HolderChunk { items, total_count }
-    }
-
-    async fn holder_query_by_system_ids(&self, isbn: &str, system_ids: &[&str]) -> HolderChunk {
-        let system_id = system_ids.join(",");
-
-        let send_query: Vec<(&str, &str)> = vec![
-            ("appkey", &self.api_key),
-            ("isbn", isbn),
-            ("systemid", &system_id),
-            ("format", "xml"),
-        ];
-
-        let mut reader = Client::default()
-            .get("https://api.calil.jp/check")
-            .query(&send_query)
-            .unwrap()
-            .send()
-            .await
-            .unwrap()
-            .body()
-            .await
-            .unwrap()
-            .reader();
-
-        let mut buf = String::new();
-        reader.read_to_string(&mut buf).unwrap();
-
-        let document = roxmltree::Document::parse(&buf).unwrap();
-        let root = document.root_element();
-
-        let mut result = holder_get_parse(root)
-            .context("invalid format response")
-            .unwrap();
-
-        // polling
-        while result.has_next {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-
-            let send_query: Vec<(&str, &str)> = vec![
-                ("appkey", &self.api_key),
-                ("session", &result.session),
-                ("format", "xml"),
-            ];
-
-            let mut reader = Client::default()
-                .get("https://api.calil.jp/check")
-                .query(&send_query)
-                .unwrap()
-                .send()
-                .await
-                .unwrap()
-                .body()
-                .await
-                .unwrap()
-                .reader();
-
-            let mut buf = String::new();
-            reader.read_to_string(&mut buf).unwrap();
-
-            let document = roxmltree::Document::parse(&buf).unwrap();
-            let root = document.root_element();
-
-            result = holder_get_parse(root)
-                .context("invalid format response")
-                .unwrap();
-        }
-
-        result
+        Ok(models::HolderChunk { items, total_count })
     }
 }
 
@@ -254,7 +229,7 @@ impl From<LibraryChunk> for models::LibraryChunk {
 
 #[derive(Debug, Default, Clone)]
 struct Library {
-    name: String,
+    library_name: String,
     system_id: String,
     ingroup_id: String,
     url: String,
@@ -269,7 +244,7 @@ struct Library {
 impl From<Library> for models::Library {
     fn from(val: Library) -> Self {
         models::Library {
-            name: val.name,
+            name: val.library_name,
             address: Some(val.address),
             prefecture: Some(val.prefecture),
             city: Some(val.city),
@@ -348,7 +323,7 @@ fn library_pull_parse(node: Node) -> Option<LibraryChunk> {
             let geocode = (lat.parse().ok()?, lng.parse().ok()?);
 
             Some(Library {
-                name,
+                library_name: name,
                 system_id,
                 ingroup_id,
                 address,
@@ -437,4 +412,41 @@ fn holder_get_parse(node: Node) -> Option<HolderChunk> {
         has_next,
         items,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use super::CalilAppState;
+    use std::env;
+
+    #[actix_web::test]
+    async fn test_all() {
+        let api_key = env::var("CALIL_APPKEY").unwrap();
+        let mut state = CalilAppState::new(&api_key);
+        state.pull_data().await.unwrap();
+
+        let res = state
+            .library_query("富山県", "射水市", 20, 0)
+            .await
+            .unwrap();
+        println!("query: \"{:?}\"", res);
+
+        let res = state
+            .library_geocode_query((36.7077262, 137.0958753), 20)
+            .await
+            .unwrap();
+        println!("geocode query: \"{:?}\"", res);
+
+        let res = state
+            .library_get("富山県立大学附属図書館射水館")
+            .await
+            .unwrap();
+        println!("get: \"{:?}\"", res);
+
+        let res = state
+            .holder_query("9784001141276", &["富山県立大学附属図書館射水館"])
+            .await
+            .unwrap();
+        println!("holder: \"{:?}\"", res);
+    }
 }
