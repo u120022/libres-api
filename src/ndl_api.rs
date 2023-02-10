@@ -97,15 +97,6 @@ fn parse_book(node: Node) -> Option<models::BookChunk> {
                 .children()
                 .find(|node| node.has_tag_name("dc"))?;
 
-            let isbn = item
-                .children()
-                .find(|node| {
-                    node.has_tag_name("identifier")
-                        && node.attribute((NS_XSI, "type")) == Some("dcndl:ISBN")
-                })?
-                .text()?
-                .to_string();
-
             let title = item
                 .children()
                 .find(|node| node.has_tag_name("title"))?
@@ -146,6 +137,15 @@ fn parse_book(node: Node) -> Option<models::BookChunk> {
                 .and_then(|node| node.text())
                 .map(|text| text.to_string());
 
+            let isbn = item
+                .children()
+                .find(|node| {
+                    node.has_tag_name("identifier")
+                        && node.attribute((NS_XSI, "type")) == Some("dcndl:ISBN")
+                })
+                .and_then(|node| node.text())
+                .map(|text| text.to_string());
+
             let language = item
                 .children()
                 .find(|node| node.has_tag_name("language"))
@@ -159,16 +159,18 @@ fn parse_book(node: Node) -> Option<models::BookChunk> {
                 .map(|text| text.to_string())
                 .collect();
 
-            let image_url = Some(format!("https://iss.ndl.go.jp/thumbnail/{isbn}"));
+            let image_url = isbn
+                .as_ref()
+                .map(|text| format!("https://iss.ndl.go.jp/thumbnail/{text}"));
 
             Some(models::Book {
-                isbn,
                 title,
                 descriptions,
                 keywords,
                 creators,
                 publishers,
                 issued_at,
+                isbn,
                 language,
                 annotations,
                 image_url,
@@ -196,6 +198,7 @@ mod test {
 
         let res = app.book_query("ドメイン駆動設計", 20, 0).await.unwrap();
         println!("book query: \"{res:?}\"");
+        println!("book query count: \"{:?}\"", res.items.len());
 
         let res = app.book_get("9784798121963").await.unwrap();
         println!("book get: \"{res:?}\"");

@@ -8,13 +8,13 @@ pub struct BookChunk {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Book {
-    pub isbn: String,
     pub title: String,
     pub descriptions: Vec<String>,
     pub keywords: Vec<String>,
     pub creators: Vec<String>,
     pub publishers: Vec<String>,
     pub issued_at: Option<String>,
+    pub isbn: Option<String>,
     pub language: Option<String>,
     pub annotations: Vec<String>,
     pub image_url: Option<String>,

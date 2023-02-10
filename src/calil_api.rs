@@ -426,12 +426,14 @@ mod test {
 
         let res = app.library_query("富山県", "射水市", 20, 0).await.unwrap();
         println!("library query: \"{res:?}\"");
+        println!("library query count \"{:?}\"", res.items.len());
 
         let res = app
             .library_geocode_query((36.7077262, 137.0958753), 20)
             .await
             .unwrap();
         println!("library geocode query: \"{res:?}\"");
+        println!("library geocode query count: \"{:?}\"", res.items.len());
 
         let res = app
             .library_get("富山県立大学附属図書館射水館")

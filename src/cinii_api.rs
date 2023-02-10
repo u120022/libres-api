@@ -8,11 +8,11 @@ use std::{error::Error, io::Read};
 type E = Box<dyn Error>;
 
 #[derive(Debug, Default, Clone)]
-pub struct NiciiAppState {
+pub struct CiniiAppState {
     appkey: String,
 }
 
-impl NiciiAppState {
+impl CiniiAppState {
     pub fn new(appkey: &str) -> Self {
         Self {
             appkey: appkey.to_string(),
@@ -130,13 +130,13 @@ fn parse_holder(node: Node) -> Option<HolderChunk> {
 
 #[cfg(test)]
 mod test {
-    use super::NiciiAppState;
+    use super::CiniiAppState;
     use std::env;
 
     #[actix_web::test]
-    async fn test_nicii() {
-        let appkey = env::var("NICII_APPKEY").unwrap();
-        let app = NiciiAppState::new(&appkey);
+    async fn test_cinii() {
+        let appkey = env::var("CINII_APPKEY").unwrap();
+        let app = CiniiAppState::new(&appkey);
 
         let res = app.holder_query("9784001141276", 20, 0).await.unwrap();
         println!("holder query: \"{res:?}\"");
