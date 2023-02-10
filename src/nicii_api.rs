@@ -1,11 +1,9 @@
-use std::{error::Error, io::Read};
-
+use crate::models;
 use actix_web::web::Buf;
 use anyhow::Context;
 use awc::Client;
 use roxmltree::Node;
-
-use crate::models;
+use std::{error::Error, io::Read};
 
 type E = Box<dyn Error>;
 
@@ -111,7 +109,7 @@ fn parse_holder(node: Node) -> Option<HolderChunk> {
                 .children()
                 .find(|node| node.has_tag_name("title"))?
                 .text()?
-                .replace(" ", "");
+                .replace(' ', "");
 
             Some(Holder {
                 library_name,
@@ -138,9 +136,9 @@ mod test {
     #[actix_web::test]
     async fn test_nicii() {
         let appkey = env::var("NICII_APPKEY").unwrap();
-        let state = NiciiAppState::new(&appkey);
+        let app = NiciiAppState::new(&appkey);
 
-        let res = state.holder_query("9784001141276", 20, 0).await.unwrap();
-        println!("holder query: \"{:?}\"", res);
+        let res = app.holder_query("9784001141276", 20, 0).await.unwrap();
+        println!("holder query: \"{res:?}\"");
     }
 }

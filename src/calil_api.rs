@@ -421,31 +421,28 @@ mod test {
     #[actix_web::test]
     async fn test_calil() {
         let appkey = env::var("CALIL_APPKEY").unwrap();
-        let state = CalilAppState::new(&appkey);
-        state.pull_data().await.unwrap();
+        let app = CalilAppState::new(&appkey);
+        app.pull_data().await.unwrap();
 
-        let res = state
-            .library_query("富山県", "射水市", 20, 0)
-            .await
-            .unwrap();
-        println!("library query: \"{:?}\"", res);
+        let res = app.library_query("富山県", "射水市", 20, 0).await.unwrap();
+        println!("library query: \"{res:?}\"");
 
-        let res = state
+        let res = app
             .library_geocode_query((36.7077262, 137.0958753), 20)
             .await
             .unwrap();
-        println!("library geocode query: \"{:?}\"", res);
+        println!("library geocode query: \"{res:?}\"");
 
-        let res = state
+        let res = app
             .library_get("富山県立大学附属図書館射水館")
             .await
             .unwrap();
-        println!("library get: \"{:?}\"", res);
+        println!("library get: \"{res:?}\"");
 
-        let res = state
+        let res = app
             .holder_query("9784001141276", &["富山県立大学附属図書館射水館"])
             .await
             .unwrap();
-        println!("holder query: \"{:?}\"", res);
+        println!("holder query: \"{res:?}\"");
     }
 }
