@@ -7,7 +7,7 @@ use std::{error::Error, io::Read};
 
 type E = Box<dyn Error>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CiniiAppState {
     appkey: String,
 }

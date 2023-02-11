@@ -7,7 +7,7 @@ use std::error::Error;
 
 type E = Box<dyn Error>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct GoogleAppState {
     appkey: String,
 }

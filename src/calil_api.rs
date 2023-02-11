@@ -13,7 +13,7 @@ use std::{
 
 type E = Box<dyn Error>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CalilAppState {
     library_chunk: Arc<RwLock<LibraryChunk>>,
     appkey: String,

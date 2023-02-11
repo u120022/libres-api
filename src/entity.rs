@@ -7,7 +7,7 @@ use std::error::Error;
 
 type E = Box<dyn Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Entity {
     pool: PgPool,
 }
