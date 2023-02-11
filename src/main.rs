@@ -1,8 +1,10 @@
 mod calil_api;
 mod cinii_api;
 mod entity;
+mod google_api;
 mod models;
 mod ndl_api;
+mod rakuten_api;
 
 use actix_web::{
     get, post,
@@ -12,7 +14,9 @@ use actix_web::{
 use calil_api::CalilAppState;
 use cinii_api::CiniiAppState;
 use entity::Entity;
+use google_api::GoogleAppState;
 use ndl_api::NdlAppState;
+use rakuten_api::RakutenAppState;
 use serde::Deserialize;
 use std::{
     env::var,
@@ -33,6 +37,8 @@ async fn main() -> Result<(), E> {
 
     let entity_app_state = Entity::new(var("DATABASE_URL")?.as_str()).await?;
     let ndl_app_state = NdlAppState::new();
+    let google_app_state = GoogleAppState::new(var("GOOGLE_APPKEY")?.as_str());
+    let rakuten_app_state = RakutenAppState::new(var("RAKUTEN_APPKEY")?.as_str());
     let calil_app_state = CalilAppState::new(var("CALIL_APPKEY")?.as_str());
     let cinii_app_state = CiniiAppState::new(var("CINII_APPKEY")?.as_str());
 
@@ -42,6 +48,8 @@ async fn main() -> Result<(), E> {
         App::new()
             .app_data(Data::new(entity_app_state.clone()))
             .app_data(Data::new(ndl_app_state.clone()))
+            .app_data(Data::new(google_app_state.clone()))
+            .app_data(Data::new(rakuten_app_state.clone()))
             .app_data(Data::new(calil_app_state.clone()))
             .app_data(Data::new(cinii_app_state.clone()))
             .service(book_query)
@@ -76,10 +84,37 @@ struct BookQuery {
 }
 
 #[get("/")]
-async fn book_query(query: Query<BookQuery>, ndl: Data<NdlAppState>) -> HttpResponse {
+async fn book_query(
+    query: Query<BookQuery>,
+    ndl: Data<NdlAppState>,
+    google: Data<GoogleAppState>,
+    rakuten: Data<RakutenAppState>,
+) -> HttpResponse {
     match query.backend.as_str() {
         "ndl" => {
             let Ok(result) = ndl.book_query(
+                query.filter.as_str(),
+                query.page_size,
+                query.page
+            ).await else {
+                return HttpResponse::NotFound().body("failed to fetch data");
+            };
+
+            HttpResponse::Ok().json(result)
+        }
+        "google" => {
+            let Ok(result) = google.book_query(
+                query.filter.as_str(),
+                query.page_size,
+                query.page
+            ).await else {
+                return HttpResponse::NotFound().body("failed to fetch data");
+            };
+
+            HttpResponse::Ok().json(result)
+        }
+        "rakuten" => {
+            let Ok(result) = rakuten.book_query(
                 query.filter.as_str(),
                 query.page_size,
                 query.page
@@ -93,13 +128,43 @@ async fn book_query(query: Query<BookQuery>, ndl: Data<NdlAppState>) -> HttpResp
     }
 }
 
-#[get("/book/{_}")]
-async fn book_get(isbn: Path<String>, ndl: Data<NdlAppState>) -> HttpResponse {
-    let Ok(result) = ndl.book_get(isbn.as_str()).await else {
-        return HttpResponse::NotFound().body("failed to fetch data");
-    };
+#[derive(Deserialize)]
+struct BookGetParams {
+    backend: String,
+    isbn: String,
+}
 
-    HttpResponse::Ok().json(result)
+#[get("/book/{backend}/{isbn}")]
+async fn book_get(
+    params: Path<BookGetParams>,
+    ndl: Data<NdlAppState>,
+    google: Data<GoogleAppState>,
+    rakuten: Data<RakutenAppState>,
+) -> HttpResponse {
+    match params.backend.as_str() {
+        "ndl" => {
+            let Ok(result) = ndl.book_get(params.isbn.as_str()).await else {
+                return HttpResponse::NotFound().body("failed to fetch data");
+            };
+
+            HttpResponse::Ok().json(result)
+        }
+        "google" => {
+            let Ok(result) = google.book_get(params.isbn.as_str()).await else {
+                return HttpResponse::NotFound().body("failed to fetch data");
+            };
+
+            HttpResponse::Ok().json(result)
+        }
+        "rakuten" => {
+            let Ok(result) = rakuten.book_get(params.isbn.as_str()).await else {
+                return HttpResponse::NotFound().body("failed to fetch data");
+            };
+
+            HttpResponse::Ok().json(result)
+        }
+        _ => HttpResponse::NotFound().body("invalid backend"),
+    }
 }
 
 #[derive(Debug, Deserialize)]
