@@ -388,7 +388,7 @@ fn holder_get_parse(node: Node) -> Option<HolderChunk> {
                     let ingroup_id = node.attribute("name")?;
 
                     let state = match node.text()? {
-                        "貸出可" | "蔵書あり" => models::HolderState::Exists,
+                        "貸出可" | "蔵書あり" => models::HolderState::Reservable,
                         "予約中" => models::HolderState::Reserved,
                         "貸出中" => models::HolderState::Borrowed,
                         "館内のみ" => models::HolderState::Inplace,

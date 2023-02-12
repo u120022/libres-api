@@ -92,6 +92,7 @@ pub enum HolderState {
     #[default]
     Nothing,
     Exists,
+    Reservable,
     Reserved,
     Borrowed,
     Inplace,

@@ -279,7 +279,7 @@ async fn user_create(data: Json<UserCreateData>, entity: Data<Entity>) -> HttpRe
         data.fullname.as_str(),
         data.address.as_str(),
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to login");
+        return HttpResponse::NotFound().body("failed to login");
     };
 
     HttpResponse::Ok().body("success to create user")
@@ -297,7 +297,7 @@ async fn user_login(data: Json<UserLoginData>, entity: Data<Entity>) -> HttpResp
         data.email.as_str(),
         data.password.as_str(),
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to login");
+        return HttpResponse::NotFound().body("failed to login");
     };
 
     HttpResponse::Ok().json(result)
@@ -313,7 +313,7 @@ async fn user_logout(data: Json<TokenData>, entity: Data<Entity>) -> HttpRespons
     let Ok(_) = entity.user_logout(
         data.token.as_str(),
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to logout");
+        return HttpResponse::NotFound().body("failed to logout");
     };
 
     HttpResponse::Ok().body("success to logout")
@@ -324,7 +324,7 @@ async fn user_get(data: Json<TokenData>, entity: Data<Entity>) -> HttpResponse {
     let Ok(result) = entity.user_get(
         data.token.as_str(),
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to logout");
+        return HttpResponse::NotFound().body("invalid token");
     };
 
     HttpResponse::Ok().json(result)
@@ -344,7 +344,7 @@ async fn reserve_create(data: Json<ReserveCreateData>, entity: Data<Entity>) -> 
         data.isbn.as_str(),
         data.library_name.as_str(),
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to logout");
+        return HttpResponse::NotFound().body("failed to process");
     };
 
     HttpResponse::Ok().body("success to create reserve")
@@ -364,7 +364,7 @@ async fn reserve_query(data: Json<ReserveQueryData>, entity: Data<Entity>) -> Ht
         data.page_size,
         data.page,
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to logout");
+        return HttpResponse::NotFound().body("failed to process");
     };
 
     HttpResponse::Ok().json(result)
@@ -376,7 +376,7 @@ async fn reserve_get(id: Path<u32>, data: Json<TokenData>, entity: Data<Entity>)
         data.token.as_str(),
         *id as i64,
     ).await else {
-        return HttpResponse::Unauthorized().body("failed to logout");
+        return HttpResponse::NotFound().body("failed to process");
     };
 
     HttpResponse::Ok().json(result)

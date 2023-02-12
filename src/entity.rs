@@ -96,7 +96,7 @@ impl Entity {
             library_name,
             isbn,
             "Staging",
-            Utc::now().naive_local()
+            Utc::now().naive_utc()
         )
         .execute(&self.pool)
         .await?;
@@ -114,7 +114,7 @@ impl Entity {
 
         let items = sqlx::query_as!(
             Reserve,
-            "SELECT * FROM reserves WHERE user_id = $1 OFFSET $2 LIMIT $3",
+            "SELECT * FROM reserves WHERE user_id = $1 ORDER BY staging_at DESC OFFSET $2 LIMIT $3",
             user.id,
             (page_size * page) as i64,
             page_size as i64
