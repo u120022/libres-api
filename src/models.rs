@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: i64,
     pub email: String,
@@ -10,20 +10,26 @@ pub struct User {
     pub address: String,
 }
 
-#[derive(Debug, Serialize)]
-pub struct Reservation {
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ReserveChunk {
+    pub items: Vec<Reserve>,
+    pub total_count: u32,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Reserve {
     pub id: i64,
     pub user_id: i64,
-    pub library_id: String,
-    pub book_id: String,
-    pub status: String,
+    pub library_name: String,
+    pub isbn: String,
+    pub state: String,
     pub staging_at: NaiveDateTime,
     pub staged_at: Option<NaiveDateTime>,
     pub reserved_at: Option<NaiveDateTime>,
     pub completed_at: Option<NaiveDateTime>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: i64,
     pub token: String,

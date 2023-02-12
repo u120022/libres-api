@@ -58,7 +58,7 @@ async fn main() -> Result<(), E> {
             .service(library_geocode_query)
             .service(library_get)
             .service(holder_query)
-            .service(holder_all_query)
+            .service(checked_holder_query)
             .service(user_create)
             .service(user_login)
             .service(user_logout)
@@ -83,7 +83,7 @@ struct BookQuery {
     backend: String,
 }
 
-#[get("/")]
+#[get("/book")]
 async fn book_query(
     query: Query<BookQuery>,
     ndl: Data<NdlAppState>,
@@ -129,35 +129,35 @@ async fn book_query(
 }
 
 #[derive(Deserialize)]
-struct BookGetParams {
+struct BookGetQuery {
     backend: String,
-    isbn: String,
 }
 
-#[get("/book/{backend}/{isbn}")]
+#[get("/book/{_}")]
 async fn book_get(
-    params: Path<BookGetParams>,
+    isbn: Path<String>,
+    query: Query<BookGetQuery>,
     ndl: Data<NdlAppState>,
     google: Data<GoogleAppState>,
     rakuten: Data<RakutenAppState>,
 ) -> HttpResponse {
-    match params.backend.as_str() {
+    match query.backend.as_str() {
         "ndl" => {
-            let Ok(result) = ndl.book_get(params.isbn.as_str()).await else {
+            let Ok(result) = ndl.book_get(isbn.as_str()).await else {
                 return HttpResponse::NotFound().body("failed to fetch data");
             };
 
             HttpResponse::Ok().json(result)
         }
         "google" => {
-            let Ok(result) = google.book_get(params.isbn.as_str()).await else {
+            let Ok(result) = google.book_get(isbn.as_str()).await else {
                 return HttpResponse::NotFound().body("failed to fetch data");
             };
 
             HttpResponse::Ok().json(result)
         }
         "rakuten" => {
-            let Ok(result) = rakuten.book_get(params.isbn.as_str()).await else {
+            let Ok(result) = rakuten.book_get(isbn.as_str()).await else {
                 return HttpResponse::NotFound().body("failed to fetch data");
             };
 
@@ -247,8 +247,8 @@ struct HolderAllQuery {
     page: u32,
 }
 
-#[get("/holder_all_query")]
-async fn holder_all_query(
+#[get("/checked_holder")]
+async fn checked_holder_query(
     query: Query<HolderAllQuery>,
     cinii: Data<CiniiAppState>,
 ) -> HttpResponse {

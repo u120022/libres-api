@@ -158,7 +158,7 @@ mod test {
         println!("book query: \"{res:?}\"");
         println!("book query count: \"{:?}\"", res.items.len());
 
-        let res = app.book_get("9784798121963").await.unwrap();
+        let res = app.book_get("9784798131610").await.unwrap();
         println!("book get: \"{res:?}\"");
     }
 }

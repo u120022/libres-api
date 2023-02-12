@@ -1,4 +1,5 @@
-use crate::models::{Reservation, Session, User};
+use crate::models::{Reserve, ReserveChunk, Session, User};
+use anyhow::Context;
 use base64::Engine;
 use chrono::Utc;
 use rand::Rng;
@@ -90,12 +91,12 @@ impl Entity {
         let user = self.user_get(token).await?;
 
         sqlx::query!(
-            "INSERT INTO reservations (user_id, library_id, book_id, status, staging_at) VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO reserves (user_id, library_name, isbn, state, staging_at) VALUES ($1, $2, $3, $4, $5)",
             user.id,
             library_name,
             isbn,
-            "staging",
-            Utc::now().naive_utc()
+            "Staging",
+            Utc::now().naive_local()
         )
         .execute(&self.pool)
         .await?;
@@ -108,12 +109,12 @@ impl Entity {
         token: &str,
         page_size: u32,
         page: u32,
-    ) -> Result<Vec<Reservation>, E> {
+    ) -> Result<ReserveChunk, E> {
         let user = self.user_get(token).await?;
 
-        let reserves = sqlx::query_as!(
-            Reservation,
-            "SELECT * FROM reservations WHERE user_id = $1 OFFSET $2 LIMIT $3",
+        let items = sqlx::query_as!(
+            Reserve,
+            "SELECT * FROM reserves WHERE user_id = $1 OFFSET $2 LIMIT $3",
             user.id,
             (page_size * page) as i64,
             page_size as i64
@@ -121,15 +122,21 @@ impl Entity {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(reserves)
+        let total_count = sqlx::query!("SELECT COUNT(*) FROM reserves WHERE user_id = $1", user.id)
+            .fetch_one(&self.pool)
+            .await?
+            .count
+            .context("failed to count")? as u32;
+
+        Ok(ReserveChunk { items, total_count })
     }
 
-    pub async fn reserve_get(&self, token: &str, id: i64) -> Result<Reservation, E> {
+    pub async fn reserve_get(&self, token: &str, id: i64) -> Result<Reserve, E> {
         let user = self.user_get(token).await?;
 
         let reserve = sqlx::query_as!(
-            Reservation,
-            "SELECT * FROM reservations WHERE id = $1 AND user_id = $2",
+            Reserve,
+            "SELECT * FROM reserves WHERE id = $1 AND user_id = $2",
             id,
             user.id,
         )
